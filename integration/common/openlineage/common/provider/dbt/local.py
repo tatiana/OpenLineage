@@ -12,6 +12,10 @@ from openlineage.common.provider.dbt.processor import DbtArtifactProcessor
 from openlineage.common.utils import get_from_nullable_chain
 
 
+DBT_TARGET_PATH_ENVVAR = "DBT_TARGET_PATH"
+DEFAULT_TARGET_PATH = "target"
+
+
 class SkipUndefined(Undefined):
     def __getattr__(self, name):
         return SkipUndefined(name=f"{self._undefined_name}.{name}")
@@ -53,15 +57,16 @@ class DbtLocalArtifactProcessor(DbtArtifactProcessor):
         dbt_project = self.load_yaml_with_jinja(
             os.path.join(project_dir, "dbt_project.yml")
         )
+        target_path = self.build_target_folder(dbt_project)
 
         self.manifest_path = os.path.join(
-            absolute_dir, dbt_project["target-path"], "manifest.json"
+            absolute_dir, target_path, "manifest.json"
         )
         self.run_result_path = os.path.join(
-            absolute_dir, dbt_project["target-path"], "run_results.json"
+            absolute_dir, target_path, "run_results.json"
         )
         self.catalog_path = os.path.join(
-            absolute_dir, dbt_project["target-path"], "catalog.json"
+            absolute_dir, target_path, "catalog.json"
         )
 
         self.target = target
@@ -70,6 +75,19 @@ class DbtLocalArtifactProcessor(DbtArtifactProcessor):
         self.profile_name = profile_name or dbt_project.get("profile")
         if not self.profile_name:
             raise KeyError(f"profile not found in {dbt_project}")
+
+    def build_target_folder(self, dbt_project: dict) -> str:
+        """
+        Build dbt target path. Uses the following:
+        1. DBT_TARGET_PATH environment variable
+        2. target-path in dbt_project.yml
+
+        Precedence order: env var > dbt_project.yml
+
+        Reference:
+        https://docs.getdbt.com/reference/project-configs/target-path
+        """
+        return os.getenv(DBT_TARGET_PATH_ENVVAR) or dbt_project.get("target-path", DEFAULT_TARGET_PATH)
 
     @classmethod
     def load_metadata(
